@@ -24,25 +24,39 @@ import {
   ConsoleProtocolType,
 } from '../src/utils/transferLogic.ts';
 
-export function detectHostLanIp(): string {
+export function detectHostLanIp(targetIpHint?: string): string {
   const interfaces = os.networkInterfaces();
-  const candidates: string[] = [];
+  const candidates: Array<{ name: string; address: string }> = [];
 
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        candidates.push(iface.address);
+        candidates.push({ name, address: iface.address });
       }
     }
   }
 
-  const privateLan = candidates.find(
-    (ip) =>
-      ip.startsWith('192.168.') ||
-      ip.startsWith('10.') ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)
+  const isPrivate = (ip: string) =>
+    ip.startsWith('192.168.') ||
+    ip.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip);
+
+  if (targetIpHint) {
+    const parts = targetIpHint.split('.');
+    if (parts.length === 4) {
+      const prefix = `${parts[0]}.${parts[1]}.${parts[2]}.`;
+      const sameSubnet = candidates.find((c) => c.address.startsWith(prefix));
+      if (sameSubnet) return sameSubnet.address;
+    }
+  }
+
+  const wifiCandidate = candidates.find(
+    (c) => /wi-?fi|wlan|wireless/i.test(c.name) && isPrivate(c.address)
   );
-  return privateLan || candidates[0] || '127.0.0.1';
+  if (wifiCandidate) return wifiCandidate.address;
+
+  const privateLan = candidates.find((c) => isPrivate(c.address));
+  return privateLan?.address || candidates[0]?.address || '127.0.0.1';
 }
 
 export interface AppOptions {
@@ -76,16 +90,55 @@ export function createApp(options: AppOptions) {
     }
   }
 
-  // Seed sample CIA in local-roms if empty
-  const sampleCia = path.join(LOCAL_ROMS_DIR, 'CitraLink_Direct_CTR-P-CLNK.cia');
-  if (!fs.existsSync(sampleCia)) {
-    const bytes = buildSyntheticCiaBinaryBuffer({
+  // Seed sample CIAs in local-roms if missing
+  const sampleCiaEntries = [
+    {
+      fileName: 'CitraLink_Direct_CTR-P-CLNK.cia',
       titleId: '000400000EC73D00',
       productCode: 'CTR-P-CLNK',
       appTitle: 'CitraLink 3DS Direct',
       publisher: 'CitraLink Project',
-    });
-    fs.writeFileSync(sampleCia, Buffer.from(bytes));
+    },
+    {
+      fileName: 'Zelda_Majoras_Mask_3D_Restoration_v1.1.cia',
+      titleId: '0004000000125500',
+      productCode: 'CTR-P-AJRE',
+      appTitle: 'Majora’s Mask 3D Patch',
+      publisher: 'Project Restoration',
+    },
+    {
+      fileName: 'CTGP-7_Custom_Tracks_Installer.cia',
+      titleId: '0004000000030800',
+      productCode: 'CTR-P-CTGP',
+      appTitle: 'CTGP-7 Installer',
+      publisher: 'CTGP-7 Team',
+    },
+    {
+      fileName: 'Mario_Kart_7_Update_v1.2_USA.cia',
+      titleId: '0004000E00030800',
+      productCode: 'CTR-U-AMKE',
+      appTitle: 'Mario Kart 7 Update',
+      publisher: 'Nintendo',
+    },
+    {
+      fileName: 'Anemone3DS_Theme_Manager_v2.3.1.cia',
+      titleId: '0004000002390000',
+      productCode: 'CTR-P-ANEM',
+      appTitle: 'Anemone3DS',
+      publisher: 'astronautlevel2',
+    },
+  ];
+  for (const entry of sampleCiaEntries) {
+    const dest = path.join(LOCAL_ROMS_DIR, entry.fileName);
+    if (!fs.existsSync(dest)) {
+      const bytes = buildSyntheticCiaBinaryBuffer({
+        titleId: entry.titleId,
+        productCode: entry.productCode,
+        appTitle: entry.appTitle,
+        publisher: entry.publisher,
+      });
+      fs.writeFileSync(dest, Buffer.from(bytes));
+    }
   }
 
   // Seed a sample save in virtual-sd Checkpoint folder
@@ -107,6 +160,17 @@ export function createApp(options: AppOptions) {
   }
 
   const app = express();
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
   app.use(express.json({ limit: '100mb' }));
 
   // Short ID mapping for compact QR codes
@@ -114,7 +178,8 @@ export function createApp(options: AppOptions) {
 
   // 1. Bridge Info
   app.get('/api/bridge/info', (req, res) => {
-    const lanIp = detectHostLanIp();
+    const targetIpHint = typeof req.query.targetIp === 'string' ? req.query.targetIp : undefined;
+    const lanIp = detectHostLanIp(targetIpHint);
     const hostHeader = req.get('host') || `${lanIp}:${PORT}`;
     const portSuffix = hostHeader.includes(':') ? hostHeader.split(':')[1] : String(PORT);
     const lanHostUrl = process.env.APP_URL || `${req.protocol}://${lanIp}:${portSuffix}`;
@@ -357,6 +422,48 @@ export function createApp(options: AppOptions) {
     });
   });
 
+  // 8b. Raw Binary Streaming Upload (supports large .CIA files for FBI QR streaming)
+  app.post('/api/staging/upload-raw', (req, res) => {
+    const rawName = typeof req.query.fileName === 'string' ? req.query.fileName : '';
+    if (!rawName.trim()) {
+      res.status(400).json({ ok: false, message: 'กรุณาระบุชื่อไฟล์ (?fileName=...)' });
+      return;
+    }
+
+    const safeName = sanitizeFileName(rawName);
+    const stagingPath = path.join(STAGING_DIR, safeName);
+    const writeStream = fs.createWriteStream(stagingPath);
+    let sizeBytes = 0;
+
+    req.on('data', (chunk: Buffer) => {
+      sizeBytes += chunk.length;
+    });
+
+    req.pipe(writeStream);
+
+    writeStream.on('finish', () => {
+      const shortId = crypto.randomBytes(4).toString('hex');
+      streamShortIdMap.set(shortId, safeName);
+      res.json({
+        ok: true,
+        fileName: safeName,
+        sizeBytes,
+        shortId,
+        streamUrl: `/api/stream/${encodeURIComponent(safeName)}`,
+        shortStreamUrl: `/api/s/${shortId}`,
+      });
+    });
+
+    const handleErr = (err: Error) => {
+      writeStream.destroy();
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, message: `อัปโหลดไฟล์ไม่สำเร็จ: ${err.message}` });
+      }
+    };
+    req.on('error', handleErr);
+    writeStream.on('error', handleErr);
+  });
+
   // 9. Transfer Jobs Polling
   app.get('/api/transfers', (_req, res) => {
     res.json({ ok: true, jobs: transferManager.listJobs() });
@@ -549,8 +656,11 @@ export function createApp(options: AppOptions) {
   app.post('/api/ftp/scan', async (req, res) => {
     const { subnetPrefix, currentIp = '192.168.1.35', mode = 'virtual' } = req.body;
 
-    const lanIp = detectHostLanIp();
-    const baseParts = (subnetPrefix || currentIp || lanIp).split('.');
+    const lanIp = detectHostLanIp(currentIp);
+    const baseSource =
+      subnetPrefix ||
+      (currentIp && currentIp !== '192.168.1.35' ? currentIp : lanIp);
+    const baseParts = baseSource.split('.');
     const prefix =
       baseParts.length >= 3 ? `${baseParts[0]}.${baseParts[1]}.${baseParts[2]}` : '192.168.1';
 
@@ -582,7 +692,7 @@ export function createApp(options: AppOptions) {
           resolve();
         };
 
-        sock.setTimeout(220);
+        sock.setTimeout(750);
         sock.once('connect', () => {
           const latencyMs = Date.now() - start;
           sock.once('data', (chunk) => {
@@ -669,20 +779,25 @@ export function createApp(options: AppOptions) {
     const start = Date.now();
     const sock = new net.Socket();
     let settled = false;
+    let connectGraceTimer: NodeJS.Timeout | undefined;
 
     const finish = (ok: boolean, banner: string) => {
       if (settled) return;
       settled = true;
+      if (connectGraceTimer) clearTimeout(connectGraceTimer);
       sock.destroy();
       res.json({ ok, mode: 'hardware', latencyMs: Date.now() - start, banner });
     };
 
-    sock.setTimeout(2500);
+    sock.setTimeout(6000);
     sock.once('connect', () => {
-      finish(true, `เชื่อมต่อ TCP ${ip}:${port} สำเร็จ`);
+      connectGraceTimer = setTimeout(() => {
+        finish(true, `เชื่อมต่อ TCP ${ip}:${port} สำเร็จ`);
+      }, 250);
     });
     sock.once('data', (chunk) => {
-      finish(true, chunk.toString('utf-8').trim());
+      const banner = chunk.toString('utf-8').trim();
+      finish(true, banner || `เชื่อมต่อ TCP ${ip}:${port} สำเร็จ`);
     });
     sock.once('timeout', () => {
       finish(false, `หมดเวลาเชื่อมต่อ ${ip}:${port}`);
@@ -718,6 +833,12 @@ export function createApp(options: AppOptions) {
       return;
     }
 
+    if (protocol === 'fbi_boop_only') {
+      const telemetry = parseConsoleBatteryResponse('', 'fbi_boop_only', undefined, `${nowTime} น.`);
+      res.json({ ok: true, telemetry });
+      return;
+    }
+
     if (!isPrivateOrLocalIp(ip)) {
       res.status(403).json({ ok: false, message: 'Invalid private IP' });
       return;
@@ -735,7 +856,7 @@ export function createApp(options: AppOptions) {
       res.json({ ok: true, telemetry });
     };
 
-    sock.setTimeout(2200);
+    sock.setTimeout(4000);
     sock.connect(Number(port), ip, () => {
       sock.write('SITE BATT\r\nSYST\r\n');
     });
