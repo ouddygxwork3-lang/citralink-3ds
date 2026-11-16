@@ -58,11 +58,11 @@ export default function App() {
   const [consoleIp, setConsoleIp] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CONN);
-      if (saved) return JSON.parse(saved).ip || '192.168.1.35';
+      if (saved) return JSON.parse(saved).ip || '172.20.10.6';
     } catch {
       // ignore
     }
-    return '192.168.1.35';
+    return '172.20.10.6';
   });
 
   const [consolePort, setConsolePort] = useState<number>(() => {
@@ -254,6 +254,9 @@ export default function App() {
 
   const fetchSdFiles = useCallback(
     async (dir: string = currentExplorerPath) => {
+      if (connectionMode === 'hardware' && protocol === 'fbi_boop_only') {
+        return;
+      }
       try {
         const online = await api.isBridgeOnline();
         setIsServerOnline(online);
@@ -266,7 +269,7 @@ export default function App() {
         // keep current files
       }
     },
-    [currentExplorerPath, connectionMode, consoleIp, consolePort]
+    [currentExplorerPath, connectionMode, protocol, consoleIp, consolePort]
   );
 
   const fetchVaultData = useCallback(async () => {
@@ -277,6 +280,9 @@ export default function App() {
       const backups = await api.listVaultBackups();
       if (Array.isArray(backups) && backups.length > 0) {
         setSaveVault(backups);
+      }
+      if (connectionMode === 'hardware' && protocol === 'fbi_boop_only') {
+        return;
       }
       const titles = await api.getCheckpointTitles(connectionMode, consoleIp, consolePort);
       if (Array.isArray(titles) && titles.length > 0) {
@@ -296,7 +302,7 @@ export default function App() {
     } catch {
       // keep current vault
     }
-  }, [connectionMode, consoleIp, consolePort]);
+  }, [connectionMode, protocol, consoleIp, consolePort]);
 
   useEffect(() => {
     api.isBridgeOnline().then((online) => setIsServerOnline(online));
@@ -1108,14 +1114,6 @@ export default function App() {
               setConsolePort(port);
               setConnectionMode(mode);
               setProtocol(nextProtocol);
-              fetchConsoleBatteryTelemetry(
-                ip,
-                port,
-                mode,
-                nextProtocol,
-                simulatedBatteryPct,
-                simulatedCharging
-              );
             }}
             onUpdateSimulatedBattery={(pct, chrg) => {
               setSimulatedBatteryPct(pct);
