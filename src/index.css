@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', 'Noto Sans Thai', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Comprehensive Dark Mode theme overrides when .dark is toggled on the root wrapper */
+.dark-mode-root {
+  background-color: #090d16 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode-root header,
+.dark-mode-root footer,
+.dark-mode-root .bg-white {
+  background-color: #111827 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode-root .bg-slate-50,
+.dark-mode-root .bg-slate-50\/70,
+.dark-mode-root .bg-slate-50\/80 {
+  background-color: #0f172a !important;
+}
+
+.dark-mode-root .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+.dark-mode-root .border-slate-200,
+.dark-mode-root .border-slate-300,
+.dark-mode-root .border-slate-100 {
+  border-color: #1f2937 !important;
+}
+
+.dark-mode-root .divide-slate-200 > :not(:last-child) {
+  border-color: #1f2937 !important;
+}
+
+.dark-mode-root .text-slate-900,
+.dark-mode-root .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.dark-mode-root .text-slate-700,
+.dark-mode-root .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark-mode-root .text-slate-500,
+.dark-mode-root .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark-mode-root input:not([type="checkbox"]):not([type="range"]),
+.dark-mode-root select {
+  background-color: #0b1120 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+.dark-mode-root .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.35) !important;
+  color: #a7f3d0 !important;
+  border-color: #065f46 !important;
+}
+
+.dark-mode-root .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.35) !important;
+  color: #fecaca !important;
+  border-color: #991b1b !important;
+}
