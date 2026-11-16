@@ -1,0 +1,6 @@
+{
+  "name": "CitraLink 3DS — ระบบโอนย้ายไฟล์เกมและสำรองเซฟไร้สาย",
+  "description": "เว็บแอปพลิเคชันสำหรับเชื่อมต่อ Nintendo 3DS ผ่าน Wi-Fi (FTPD และ FBI Remote Install) เพื่อส่งไฟล์เกม (.CIA, .3DSX, .NDS) ลง SD Card และสำรองข้อมูลเซฟเกมจาก Checkpoint กลับมายังอุปกรณ์หลัก",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
