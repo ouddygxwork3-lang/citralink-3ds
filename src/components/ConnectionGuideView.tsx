@@ -7,6 +7,8 @@ import {
   BatteryCharging,
   Battery,
   Radar,
+  Play,
+  ExternalLink,
 } from 'lucide-react';
 import {
   validateConnectionInput,
@@ -84,7 +86,6 @@ export const ConnectionGuideView: React.FC<ConnectionGuideViewProps> = ({
     const validIp = validation.normalizedIp!;
     const validPort = validation.normalizedPort!;
 
-    onUpdateConnection(validIp, validPort, modeInput, protocolInput);
     setProbeStatus({ state: 'probing', message: `กำลังทดสอบการเชื่อมต่อ TCP ไปยัง ${validIp}:${validPort}...` });
 
     try {
@@ -95,10 +96,12 @@ export const ConnectionGuideView: React.FC<ConnectionGuideViewProps> = ({
           ip: validIp,
           port: validPort,
           mode: modeInput,
+          protocol: protocolInput,
         }),
       });
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
+        onUpdateConnection(validIp, validPort, modeInput, protocolInput);
         if (modeInput === 'virtual') {
           setProbeStatus({
             state: 'ok',
@@ -125,7 +128,9 @@ export const ConnectionGuideView: React.FC<ConnectionGuideViewProps> = ({
           message: data.banner || `ไม่สามารถเชื่อมต่อ ${validIp}:${validPort}`,
         });
       }
+      onUpdateConnection(validIp, validPort, modeInput, protocolInput);
     } catch {
+      onUpdateConnection(validIp, validPort, modeInput, protocolInput);
       if (modeInput === 'virtual') {
         setProbeStatus({
           state: 'ok',
@@ -204,6 +209,39 @@ export const ConnectionGuideView: React.FC<ConnectionGuideViewProps> = ({
             <p className="mt-1 text-xs text-slate-600">
               ระบุหมายเลข IP Address, Port หรือใช้ระบบสแกนค้นหาเครื่อง Nintendo 3DS ในวงแลนอัตโนมัติ
             </p>
+          </div>
+
+          {/* 1-Click Local Bridge Launcher */}
+          <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-4 space-y-2.5">
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <Play className="h-4 w-4 text-rose-600" />
+                เปิด Local Bridge บนคอมอัตโนมัติ (1-Click)
+              </h2>
+              <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                สำหรับเชื่อมต่อเครื่อง 3DS จริงจากเว็บออนไลน์ (สั่งรัน <code className="font-mono">npm run dev</code> และเปิดพอร์ต 3000 อัตโนมัติ)
+                <br />
+                *ครั้งแรกให้ดับเบิลคลิกไฟล์ <code className="font-mono font-semibold">Start-CitraLink-3DS.bat</code> ในโฟลเดอร์โปรเจกต์ก่อน 1 ครั้ง
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href="citralink://start"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 transition-colors whitespace-nowrap"
+              >
+                <Play className="h-3.5 w-3.5" />
+                เปิด Local Bridge อัตโนมัติ (citralink://start)
+              </a>
+              <a
+                href="http://localhost:3000"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors whitespace-nowrap"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                เปิดหน้า Local Bridge (localhost:3000)
+              </a>
+            </div>
           </div>
 
           {/* Automatic LAN Subnet Scanner Box */}

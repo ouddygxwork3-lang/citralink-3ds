@@ -145,11 +145,35 @@ export const GameTransferView: React.FC<GameTransferViewProps> = ({
     };
   }, [transferQueue.length]);
 
+  const stageRawFileToLocalBridge = (file: File) => {
+    if (file.size <= 0) return;
+    const query = `fileName=${encodeURIComponent(file.name)}`;
+    const tryUpload = async (base: string) => {
+      const res = await fetch(`${base}/api/staging/upload-raw?${query}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+      });
+      const ct = res.headers.get('content-type') || '';
+      if (!res.ok || !ct.includes('application/json')) {
+        throw new Error('Local bridge unavailable');
+      }
+    };
+    tryUpload('').catch(() => {
+      if (typeof window !== 'undefined' && window.location.origin !== 'http://localhost:3000') {
+        tryUpload('http://localhost:3000').catch(() => {
+          // ignore when local bridge is offline
+        });
+      }
+    });
+  };
+
   const processIncomingBrowserFiles = async (fileList: FileList) => {
     const added: StagedGameFileItem[] = [];
     for (let i = 0; i < fileList.length; i++) {
       const f = fileList[i];
       const effectiveSize = f.size > 0 ? f.size : 24 * 1024 * 1024;
+      stageRawFileToLocalBridge(f);
       try {
         const meta = await inspectBrowserGameFile(f);
         let base64SmallPayload: string | undefined;
@@ -705,16 +729,32 @@ export const GameTransferView: React.FC<GameTransferViewProps> = ({
                           </p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setStagedFiles((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        aria-label={`นำไฟล์ ${item.fileName} ออกจากรายการเตรียมส่ง`}
-                        className="p-1 text-slate-400 hover:text-red-600 shrink-0"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenQrInstall({
+                              fileName: item.fileName,
+                              sizeBytes: item.sizeBytes,
+                              titleId: item.titleId,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors whitespace-nowrap"
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                          QR / FBI
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setStagedFiles((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          aria-label={`นำไฟล์ ${item.fileName} ออกจากรายการเตรียมส่ง`}
+                          className="p-1 text-slate-400 hover:text-red-600 shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -951,7 +991,7 @@ export const GameTransferView: React.FC<GameTransferViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 sm:w-64 shrink-0">
+                <div className="flex items-center gap-3 sm:w-72 shrink-0">
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
                     <div
                       style={{ width: `${item.progress}%` }}
@@ -964,6 +1004,20 @@ export const GameTransferView: React.FC<GameTransferViewProps> = ({
                       }`}
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenQrInstall({
+                        fileName: item.fileName,
+                        sizeBytes: item.sizeBytes,
+                        titleId: item.titleId,
+                      })
+                    }
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 whitespace-nowrap"
+                  >
+                    <QrCode className="h-3 w-3" />
+                    QR
+                  </button>
                   <button
                     type="button"
                     onClick={() => onNavigateToExplorer(item.targetDirectory)}

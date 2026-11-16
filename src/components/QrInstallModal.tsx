@@ -38,29 +38,42 @@ export const QrInstallModal: React.FC<QrInstallModalProps> = ({
     setPushState('idle');
     setStatusMessage('');
     let cancelled = false;
-    fetch('/api/bridge/info')
-      .then((r) => {
-        const contentType = r.headers.get('content-type') || '';
-        if (!r.ok || !contentType.includes('application/json')) return null;
-        return r.json();
-      })
+    const query = `targetIp=${encodeURIComponent(consoleIp)}`;
+
+    const fetchBridgeInfo = async (base: string) => {
+      const r = await fetch(`${base}/api/bridge/info?${query}`);
+      const contentType = r.headers.get('content-type') || '';
+      if (!r.ok || !contentType.includes('application/json')) {
+        throw new Error('Bridge info unavailable');
+      }
+      return r.json();
+    };
+
+    fetchBridgeInfo('')
+      .catch(() => fetchBridgeInfo('http://localhost:3000'))
       .then((data) => {
         if (!cancelled && data?.hostUrl) {
           setLanHostOrigin(data.hostUrl);
         }
       })
       .catch(() => {
-        // Fallback to window.location.origin
+        // Fallback below
       });
     return () => {
       cancelled = true;
     };
-  }, [isOpen, fileName]);
+  }, [isOpen, fileName, consoleIp]);
 
   if (!isOpen) return null;
 
   const fallbackOrigin =
-    typeof window !== 'undefined' ? window.location.origin : 'http://192.168.1.10:3000';
+    typeof window !== 'undefined'
+      ? window.location.hostname.endsWith('github.io')
+        ? consoleIp.startsWith('172.20.10.')
+          ? 'http://172.20.10.9:3000'
+          : 'http://localhost:3000'
+        : window.location.origin
+      : 'http://192.168.1.10:3000';
   const effectiveOrigin =
     lanHostOrigin && !lanHostOrigin.includes('127.0.0.1') && !lanHostOrigin.includes('localhost')
       ? lanHostOrigin
@@ -94,36 +107,41 @@ export const QrInstallModal: React.FC<QrInstallModalProps> = ({
     setPushState('sending');
     setStatusMessage('กำลังส่งแพ็กเก็ต URL ไปยังแอป FBI บนเครื่อง Nintendo 3DS...');
     try {
-      const response = await fetch('/api/fbi/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ip: consoleIp,
-          port: consolePort,
-          urls: [streamUrl.trim() || defaultStreamUrl],
-          mode: connectionMode,
-        }),
+      const payload = JSON.stringify({
+        ip: consoleIp,
+        port: consolePort,
+        urls: [streamUrl.trim() || defaultStreamUrl],
+        mode: connectionMode,
       });
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        if (connectionMode === 'virtual') {
-          const msg = `จำลองส่งแพ็กเก็ต URL ไปยัง FBI (${consoleIp}:${consolePort}) สำเร็จแล้ว (โหมดเว็บเบราว์เซอร์)`;
-          setPushState('success');
-          setStatusMessage(msg);
-          onBoopPushSuccess(fileName, msg);
-        } else {
-          setPushState('error');
-          setStatusMessage(
-            'โหมดเว็บออนไลน์ไม่สามารถส่งแพ็กเก็ต TCP ตรงเข้าเครื่อง 3DS ได้ กรุณาสแกน QR Code จากลิงก์สาธารณะ หรือรัน Local Bridge (npm run dev) ในวง Wi-Fi เดียวกัน'
-          );
+
+      const sendPush = async (base: string) => {
+        const res = await fetch(`${base}/api/fbi/push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+        });
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('NON_JSON_RESPONSE');
         }
-        return;
+        return res.json();
+      };
+
+      let data: { ok: boolean; message?: string };
+      try {
+        data = await sendPush('');
+      } catch {
+        if (typeof window !== 'undefined' && window.location.origin !== 'http://localhost:3000') {
+          data = await sendPush('http://localhost:3000');
+        } else {
+          throw new Error('PUSH_FAILED');
+        }
       }
-      const data = await response.json();
+
       if (data.ok) {
         setPushState('success');
-        setStatusMessage(data.message);
-        onBoopPushSuccess(fileName, data.message);
+        setStatusMessage(data.message || 'ส่งแพ็กเก็ต URL ไปยัง FBI สำเร็จ');
+        onBoopPushSuccess(fileName, data.message || 'ส่งแพ็กเก็ต URL ไปยัง FBI สำเร็จ');
       } else {
         setPushState('error');
         setStatusMessage(data.message || 'ไม่สามารถเชื่อมต่อพอร์ต 5000 ของ FBI ได้');
